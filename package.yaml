@@ -1,0 +1,38 @@
+name:        brick-dropdownmenu
+version:     0.1.0
+github:      "mlang/brick-dropdownmenu"
+license:     BSD3
+author:      "Mario Lang"
+maintainer:  "mlang@blind.guru"
+copyright:   "2018 Mario Lang"
+
+extra-source-files:
+- ChangeLog.md
+
+category:    Graphics
+synopsis:    A drop down menu widget for brick.
+description: A simple drop down menu widget for the brick text user interface library.
+
+dependencies:
+- base >= 4.7 && < 5
+- brick >= 0.35 && < 0.42
+- microlens
+- microlens-th
+- pointedlist
+- vector
+- vty
+
+library:
+  source-dirs: src
+
+executables:
+  brick-dropdownmenu-demo:
+    main:                Demo.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - brick-dropdownmenu
+    - text
