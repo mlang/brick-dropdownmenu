@@ -1,4 +1,3 @@
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TemplateHaskell #-}
 module Main where
 
@@ -88,7 +87,7 @@ demo = defaultMain
   App {
   appChooseCursor = showFirstCursor
 , appDraw = draw
-, appAttrMap = const $ attrs
+, appAttrMap = const attrs
 , appStartEvent = pure
 , appHandleEvent = handleEvent
 }
