@@ -65,13 +65,9 @@ handleEvent s _ = continue s
 exitMenu x = menu %~ closeDropDownMenu
          >>> focus %~ focusSetCurrent x
 
-msg t = set status t
-    >>> exitMenu Editor
-    >>> continue
+msg t = set status t >>> exitMenu Editor >>> continue
 
-aboutDialog = set status "About"
-          >>> exitMenu About
-          >>> continue
+aboutDialog = exitMenu About >>> continue
 
 menuD =
   [ ("File", FileMenu,
