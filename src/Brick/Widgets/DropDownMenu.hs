@@ -35,6 +35,11 @@ data DropDownMenu s n = DropDownMenu {
 
 makeLenses ''DropDownMenu
 
+submenuList
+  :: Applicative f
+  => LensLike' f (DropDownMenu s n) (List n (MenuItem s n))
+submenuList = menuList . _Just . focus . _2
+
 instance Named (DropDownMenu s n) n where getName = (^.menuName)
 
 dropDownMenu :: n -> Menu s n -> DropDownMenu s n
@@ -52,13 +57,18 @@ handleDropDownMenuEvent s target = \case
   EvKey KLeft []  -> continue $ s & target.menuList._Just %~ previous
   EvKey KRight [] -> continue $ s & target.menuList._Just %~ next
   EvKey KEsc []   -> continue $ s & target.menuOpen .~ False
-  e@(EvKey KDown [])
-    | not $ s^.target.menuOpen -> continue $ s & target.menuOpen .~ True
-    | otherwise -> continue =<< handleEventLensed s target handleSubmenuEvent e
+  EvKey KUp []
+    | s^.target.menuOpen &&
+      fmap fst (s ^? target.submenuList >>= listSelectedElement) == Just 0 ->
+      continue $ s & target.menuOpen .~ False
+  EvKey KDown []
+    | not $ s^.target.menuOpen ->
+      continue $ s & target.menuOpen    .~ True
+                   & target.submenuList %~ listMoveTo 0
   EvKey KEnter []
     | not $ s^.target.menuOpen -> continue $ s & target.menuOpen .~ True
     | otherwise ->
-      case s ^? target.menuList._Just.focus._2 >>= listSelectedElement of
+      case s ^? target.submenuList >>= listSelectedElement of
         Nothing -> continue s
         Just (_, (_, _, f)) -> f s
   e | s^.target.menuOpen ->
@@ -106,7 +116,7 @@ drawMenuItem sel (t, n, _) =
   in cursor $ str t
 
 isDropDownMenuOpen :: DropDownMenu s n -> Bool
-isDropDownMenuOpen = (^.menuOpen)
+isDropDownMenuOpen = (^. menuOpen)
 
 closeDropDownMenu :: DropDownMenu s n -> DropDownMenu s n
 closeDropDownMenu = set menuOpen False
