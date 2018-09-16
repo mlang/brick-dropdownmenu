@@ -4,29 +4,67 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
+-- | This module provides a drop-down menu type and functions for
+-- manipulating and rendering it.
 module Brick.Widgets.DropDownMenu (
   DropDownMenu
+-- * Constructing a drop-down menu
 , dropDownMenu
-, handleDropDownMenuEvent, renderDropDownMenu
-, isDropDownMenuOpen, closeDropDownMenu
+-- * Handling events
+, handleDropDownMenuEvent
+-- * Rendering drop-down menus
+, renderDropDownMenu
+-- * Accessors
+, isDropDownMenuOpen
+-- * Manipulating a drop-down menu
+, closeDropDownMenu
+-- * Attributes
 , menuAttr, menuSelectedAttr, listAttr, listSelectedAttr
 ) where
 
-import Brick
-import Brick.Widgets.Border
-import Brick.Widgets.List
-import Data.Foldable (toList)
-import Data.List (find, findIndex, intersperse)
-import Data.List.PointedList.Circular (PointedList, focus, next, previous, withFocus)
-import qualified Data.List.PointedList.Circular as PointedList (fromList)
-import qualified Data.Vector as Vector (fromList, length)
-import Graphics.Vty (Event(..), Key(..))
-import Lens.Micro
-import Lens.Micro.TH
+import Brick                                          ( Named(..)
+                                                      , AttrName
+                                                      , EventM, Next
+                                                      , Location(..), Widget
+                                                      , continue, emptyWidget
+                                                      , handleEventLensed
+                                                      , hBox, hLimit
+                                                      , padLeftRight, padTopBottom
+                                                      , showCursor, str
+                                                      , textWidth, vLimit
+                                                      , withAttr
+                                                      )
+import Brick.Widgets.Border                           ( borderWithLabel )
+import Brick.Widgets.List                             ( List
+                                                      , handleListEvent, list
+                                                      , listAttr, listElements
+                                                      , listMoveTo
+                                                      , listSelectedAttr
+                                                      , listSelectedElement
+                                                      , renderList
+                                                      )
+import Data.Foldable                                  ( toList )
+import Data.List                                      ( find, findIndex
+                                                      , intersperse
+                                                      )
+import Data.List.PointedList                          ( PointedList
+                                                      , focus, withFocus
+                                                      )
+import Data.List.PointedList.Circular                 ( next, previous )
+import qualified Data.List.PointedList as PointedList ( fromList )
+import qualified Data.Vector as Vector                ( fromList, length )
+import Graphics.Vty                                   ( Event(..), Key(..) )
+import Lens.Micro                                     ( Lens', LensLike'
+                                                      , _2, _Just
+                                                      , (&), (^.), (^?)
+                                                      , (.~), (%~), set
+                                                      )
+import Lens.Micro.TH                                  ( makeLenses )
 
 type MenuItem s n = (String, n, s -> EventM n (Next s))
 type Menu s n = [(String, n, [MenuItem s n])]
 
+-- | Drop-down menus present a menu bar with drop-down submenus.
 data DropDownMenu s n = DropDownMenu {
   _menuName :: n
 , _menuOpen :: Bool
@@ -42,7 +80,12 @@ submenuList = menuList . _Just . focus . _2
 
 instance Named (DropDownMenu s n) n where getName = (^.menuName)
 
-dropDownMenu :: n -> Menu s n -> DropDownMenu s n
+dropDownMenu
+  :: n
+  -- ^ The resource name for this drop-down menu
+  -> Menu s n
+  -- ^ Description of the menu structure and associated actions
+  -> DropDownMenu s n
 dropDownMenu name desc =
   DropDownMenu name False $ PointedList.fromList $
   (\(t, n, c) -> (t, list n (Vector.fromList c) 1)) <$> desc
@@ -50,8 +93,11 @@ dropDownMenu name desc =
 handleDropDownMenuEvent
   :: (Eq n, Ord n)
   => s
+  -- ^ The application state
   -> Lens' s (DropDownMenu s n)
+  -- ^ A lens for accessing the drop-down menu state
   -> Event
+  -- ^ Event received from Vty
   -> EventM n (Next s)
 handleDropDownMenuEvent s target = \case
   EvKey KLeft []  -> continue $ s & target.menuList._Just %~ previous
@@ -78,6 +124,7 @@ handleDropDownMenuEvent s target = \case
 renderDropDownMenu
   :: (Eq n, Ord n, Show n)
   => Bool
+  -- ^ Does this menu have focus?
   -> DropDownMenu s n
   -> Widget n
 renderDropDownMenu focused m = case m^?menuList._Just of
