@@ -7,6 +7,7 @@ import Brick.Widgets.Border
 import Brick.Widgets.Center
 import Brick.Widgets.Edit
 import Brick.Widgets.DropDownMenu
+import Brick.Widgets.List (listAttr, listSelectedAttr)
 import Control.Category ((>>>))
 import Data.Text
 import Graphics.Vty (defAttr, blue, white, Event(EvKey), Key(..), Modifier(..))

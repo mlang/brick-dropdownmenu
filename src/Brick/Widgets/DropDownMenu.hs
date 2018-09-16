@@ -19,7 +19,7 @@ module Brick.Widgets.DropDownMenu (
 -- * Manipulating a drop-down menu
 , closeDropDownMenu
 -- * Attributes
-, menuAttr, menuSelectedAttr, listAttr, listSelectedAttr
+, menuAttr, menuSelectedAttr
 ) where
 
 import Brick                                          ( Named(..)
@@ -35,11 +35,9 @@ import Brick                                          ( Named(..)
                                                       , withAttr
                                                       )
 import Brick.Widgets.Border                           ( borderWithLabel )
-import Brick.Widgets.List                             ( List
-                                                      , handleListEvent, list
-                                                      , listAttr, listElements
-                                                      , listMoveTo
-                                                      , listSelectedAttr
+import Brick.Widgets.List                             ( List, list
+                                                      , handleListEvent
+                                                      , listElements, listMoveTo
                                                       , listSelectedElement
                                                       , renderList
                                                       )
