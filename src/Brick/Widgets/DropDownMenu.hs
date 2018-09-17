@@ -72,7 +72,7 @@ import qualified Data.Vector as Vector                ( fromList, length )
 import Graphics.Vty                                   ( Event(..)
                                                       , Key(..), Modifier(..)
                                                       )
-import Lens.Micro.GHC                                 ( Lens', LensLike'
+import Lens.Micro.GHC                                 ( Lens', Traversal'
                                                       , _2, _Just
                                                       , (&), (^.), (^?)
                                                       , (.~), (%~), at, set
@@ -101,9 +101,7 @@ data DropDownMenu s n = DropDownMenu {
 
 makeLenses ''DropDownMenu
 
-submenuList
-  :: Applicative f
-  => LensLike' f (DropDownMenu s n) (List n (MenuItem s n))
+submenuList :: Traversal' (DropDownMenu s n) (List n (MenuItem s n))
 submenuList = menuList . _Just . focus . _2
 
 instance Named (DropDownMenu s n) n where getName = _menuName
@@ -122,9 +120,8 @@ dropDownMenu name desc =
     f i (_, _, Just e, xs) = (e, MoveTo i) : mapMaybe g xs
     f _ (_, _, Nothing, xs) = mapMaybe g xs
     g (_, _, Just e, a) = Just (e, Invoke a)
-    g (_, _, Nothing, _) = Nothing
+    g _ = Nothing
     
-
 -- | Handle drop-down menu events.
 -- This should typically be called from the application event handler
 -- if this menu widget has focus.
@@ -157,12 +154,10 @@ handleDropDownMenuEvent s target setFocus = \case
       case fmap snd (listSelectedElement =<< s ^? target.submenuList) of
         Nothing -> continue s
         Just (_, _, _, f) -> f s
-  e | s^.target.menuOpen ->
-      fromMaybe (continue =<< handleEventLensed s target handleSubmenuEvent e) $
-      handleGlobalDropDownMenuEvent s target setFocus e
-    | otherwise ->
-      fromMaybe (continue s) $
-      handleGlobalDropDownMenuEvent s target setFocus e
+  e -> let handle = if s ^. target.menuOpen
+                    then continue =<< handleEventLensed s target handleSubmenuEvent e
+                    else continue s
+       in fromMaybe handle $ handleGlobalDropDownMenuEvent s target setFocus e
 
 -- | Handle global events.
 -- This function will handle global events associated with submenus
@@ -180,11 +175,11 @@ handleGlobalDropDownMenuEvent
   -- ^ Event received from Vty
   -> Maybe (EventM n (Next s))
 handleGlobalDropDownMenuEvent s target setFocus e = go =<< s ^. target . menuKeyMap . at e where
-  go (MoveTo n) = case moveTo n =<< s ^. target.menuList of
-                    Nothing -> Nothing
-                    l -> pure . continue . setFocus $
-                         s & target.menuList .~ l
-                           & target.menuOpen .~ True
+  go (MoveTo n) = s ^. target.menuList >>= moveTo n >>= \l ->
+                  pure . continue $
+                  s & target.menuList._Just .~ l
+                    & target.menuOpen .~ True
+                    & setFocus
   go (Invoke f) = pure $ f s
 
 renderDropDownMenu
@@ -193,9 +188,8 @@ renderDropDownMenu
   -- ^ Does this menu have focus?
   -> DropDownMenu s n
   -> Widget n
-renderDropDownMenu focused m = case m^?menuList._Just of
-  Nothing -> emptyWidget
-  Just menus ->
+renderDropDownMenu focused m = maybe emptyWidget render $ m ^. menuList where
+  render menus =
     let o = m^.menuOpen
         f ((t, l), sel) =
           let cursor = if focused && sel && not o
@@ -214,11 +208,11 @@ renderDropDownMenu focused m = case m^?menuList._Just of
     in hBox $ intersperse (str " ") $ map f (toList (withFocus menus))
 
 handleSubmenuEvent
-  :: (Ord n)
+  :: Ord n
   => Event
   -> DropDownMenu s n
   -> EventM n (DropDownMenu s n)
-handleSubmenuEvent e m = maybe (pure m) handleEvent $ m ^? menuList._Just where
+handleSubmenuEvent e m = maybe (pure m) handleEvent $ m ^. menuList where
   handleEvent menus = do
     menus' <- handleEventLensed menus (focus._2) handleListEvent e
     pure $ m & menuList._Just .~ menus'
