@@ -10,8 +10,11 @@ extra-source-files:
 - ChangeLog.md
 
 category:    Graphics
-synopsis:    A drop down menu widget for brick.
-description: A simple drop down menu widget for the brick text user interface library.
+synopsis:    A drop-down menu widget for brick.
+description: A simple drop-down menu widget for the declarative
+  text user interface library brick.
+ 
+  Each submenu and menu item can have an associated global key binding.
 
 dependencies:
 - base >= 4.7 && < 5
@@ -23,6 +26,12 @@ dependencies:
 - pointedlist
 - vector
 - vty
+
+flags:
+  demo:
+    description: Build the demo program
+    manual: yes
+    default: no
 
 library:
   source-dirs: src
@@ -38,3 +47,9 @@ executables:
     dependencies:
     - brick-dropdownmenu
     - text
+    when:
+    - condition: flag(demo)
+      then:
+        buildable: yes
+      else:
+        buildable: no
