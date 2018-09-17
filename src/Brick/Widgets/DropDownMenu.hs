@@ -4,8 +4,23 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
--- | This module provides a drop-down menu type and functions for
--- manipulating and rendering it.
+{-|
+Module      : Brick.Widgets.DropDownMenu
+Description : A drop-down menu type and functions for manipulating and rendering it.
+Copyright   : (c) Mario Lang, 2018
+License     : BSD-style (see the file LICENSE)
+Maintainer  : mlang@blind.guru
+Stability   : experimental
+Portability : POSIX
+
+This module provides a simple drop-down menu widget with global key bindings.
+
+A submenu consists of a title, a resource name, and an associated global event.
+Each menu item consists of the items title, resource name, global event and
+associated action.
+
+An action is a function @s -> 'EventM' n ('Next' s)@.
+-}
 module Brick.Widgets.DropDownMenu (
   DropDownMenu
 -- * Constructing a drop-down menu
@@ -228,6 +243,7 @@ showEvent (EvKey (KChar c) mods) = concatMap showModifier mods <> [c] where
 isDropDownMenuOpen :: DropDownMenu s n -> Bool
 isDropDownMenuOpen = (^. menuOpen)
 
+-- | Close submenu.
 closeDropDownMenu :: DropDownMenu s n -> DropDownMenu s n
 closeDropDownMenu = set menuOpen False
 
