@@ -16,7 +16,9 @@ description: A simple drop down menu widget for the brick text user interface li
 dependencies:
 - base >= 4.7 && < 5
 - brick >= 0.35 && < 0.42
+- containers
 - microlens
+- microlens-ghc
 - microlens-th
 - pointedlist
 - vector

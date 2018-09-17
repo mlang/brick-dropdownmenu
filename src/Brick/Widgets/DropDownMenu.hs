@@ -11,7 +11,7 @@ module Brick.Widgets.DropDownMenu (
 -- * Constructing a drop-down menu
 , dropDownMenu
 -- * Handling events
-, handleDropDownMenuEvent
+, handleDropDownMenuEvent, handleGlobalDropDownMenuEvent
 -- * Rendering drop-down menus
 , renderDropDownMenu
 -- * Accessors
@@ -46,26 +46,42 @@ import Data.List                                      ( find, findIndex
                                                       , intersperse
                                                       )
 import Data.List.PointedList                          ( PointedList
-                                                      , focus, withFocus
+                                                      , focus, moveTo, withFocus
                                                       )
 import Data.List.PointedList.Circular                 ( next, previous )
 import qualified Data.List.PointedList as PointedList ( fromList )
+import Data.Map                                       ( Map )
+import qualified Data.Map as Map                      ( empty, fromList )
+import Data.Maybe                                     ( fromMaybe, mapMaybe )
 import qualified Data.Vector as Vector                ( fromList, length )
-import Graphics.Vty                                   ( Event(..), Key(..) )
-import Lens.Micro                                     ( Lens', LensLike'
+import Graphics.Vty                                   ( Event(..)
+                                                      , Key(..), Modifier(..)
+                                                      )
+import Lens.Micro.GHC                                 ( Lens', LensLike'
                                                       , _2, _Just
                                                       , (&), (^.), (^?)
-                                                      , (.~), (%~), set
+                                                      , (.~), (%~), at, set
                                                       )
 import Lens.Micro.TH                                  ( makeLenses )
 
-type MenuItem s n = (String, n, s -> EventM n (Next s))
-type Menu s n = [(String, n, [MenuItem s n])]
+type MenuItem s n = (String, n, Maybe Event, s -> EventM n (Next s))
+type Menu s n = [(String, n, Maybe Event, [MenuItem s n])]
+
+data Action s n = MoveTo !Int | Invoke (s -> EventM n (Next s))
 
 -- | Drop-down menus present a menu bar with drop-down submenus.
+--
+-- Drop-down menus support the following events by default:
+--
+-- * Left/right arrow keys: Switch to previous/next submenu
+-- * Up arrow key: Close submenu when already at top, otherwise move selection in submenu
+-- * Down arrow key: Open submenu or move submenu selection downwards
+-- * Escape: Close submenu
+-- * Return: Open submenu or invoke selected submenu item
 data DropDownMenu s n = DropDownMenu {
   _menuName :: n
 , _menuOpen :: Bool
+, _menuKeyMap :: Map Event (Action s n)
 , _menuList :: Maybe (PointedList (String, List n (MenuItem s n)))
 }
 
@@ -76,7 +92,7 @@ submenuList
   => LensLike' f (DropDownMenu s n) (List n (MenuItem s n))
 submenuList = menuList . _Just . focus . _2
 
-instance Named (DropDownMenu s n) n where getName = (^.menuName)
+instance Named (DropDownMenu s n) n where getName = _menuName
 
 dropDownMenu
   :: n
@@ -85,25 +101,37 @@ dropDownMenu
   -- ^ Description of the menu structure and associated actions
   -> DropDownMenu s n
 dropDownMenu name desc =
-  DropDownMenu name False $ PointedList.fromList $
-  (\(t, n, c) -> (t, list n (Vector.fromList c) 1)) <$> desc
+  DropDownMenu name False keyMap $ PointedList.fromList $
+  (\(t, n, _, c) -> (t, list n (Vector.fromList c) 1)) <$> desc
+ where
+  keyMap = Map.fromList . concat $ zipWith f [0..] desc where
+    f i (_, _, Just e, xs) = (e, MoveTo i) : mapMaybe g xs
+    f _ (_, _, Nothing, xs) = mapMaybe g xs
+    g (_, _, Just e, a) = Just (e, Invoke a)
+    g (_, _, Nothing, _) = Nothing
+    
 
+-- | Handle drop-down menu events.
+-- This should typically be called from the application event handler
+-- if this menu widget has focus.
 handleDropDownMenuEvent
   :: (Eq n, Ord n)
   => s
   -- ^ The application state
   -> Lens' s (DropDownMenu s n)
   -- ^ A lens for accessing the drop-down menu state
+  -> (s -> s)
+  -- ^ Sets focus to this drop-down menu widget if need be
   -> Event
   -- ^ Event received from Vty
   -> EventM n (Next s)
-handleDropDownMenuEvent s target = \case
+handleDropDownMenuEvent s target setFocus = \case
   EvKey KLeft []  -> continue $ s & target.menuList._Just %~ previous
   EvKey KRight [] -> continue $ s & target.menuList._Just %~ next
   EvKey KEsc []   -> continue $ s & target.menuOpen .~ False
   EvKey KUp []
     | s^.target.menuOpen &&
-      fmap fst (s ^? target.submenuList >>= listSelectedElement) == Just 0 ->
+      fmap fst (listSelectedElement =<< s ^? target.submenuList) == Just 0 ->
       continue $ s & target.menuOpen .~ False
   EvKey KDown []
     | not $ s^.target.menuOpen ->
@@ -112,12 +140,38 @@ handleDropDownMenuEvent s target = \case
   EvKey KEnter []
     | not $ s^.target.menuOpen -> continue $ s & target.menuOpen .~ True
     | otherwise ->
-      case s ^? target.submenuList >>= listSelectedElement of
+      case fmap snd (listSelectedElement =<< s ^? target.submenuList) of
         Nothing -> continue s
-        Just (_, (_, _, f)) -> f s
+        Just (_, _, _, f) -> f s
   e | s^.target.menuOpen ->
-      continue =<< handleEventLensed s target handleSubmenuEvent e
-    | otherwise -> continue s
+      fromMaybe (continue =<< handleEventLensed s target handleSubmenuEvent e) $
+      handleGlobalDropDownMenuEvent s target setFocus e
+    | otherwise ->
+      fromMaybe (continue s) $
+      handleGlobalDropDownMenuEvent s target setFocus e
+
+-- | Handle global events.
+-- This function will handle global events associated with submenus
+-- or menu items.  It should typically be called from the main
+-- application event handler before any other more specific handlers.
+handleGlobalDropDownMenuEvent
+  :: (Eq n, Ord n)
+  => s
+  -- ^ The application state
+  -> Lens' s (DropDownMenu s n)
+  -- ^ A lens for accessing the drop-down menu state
+  -> (s -> s)
+  -- ^ Set application focus
+  -> Event
+  -- ^ Event received from Vty
+  -> Maybe (EventM n (Next s))
+handleGlobalDropDownMenuEvent s target setFocus e = go =<< s ^. target . menuKeyMap . at e where
+  go (MoveTo n) = case moveTo n =<< s ^. target.menuList of
+                    Nothing -> Nothing
+                    l -> pure . continue . setFocus $
+                         s & target.menuList .~ l
+                           & target.menuOpen .~ True
+  go (Invoke f) = pure $ f s
 
 renderDropDownMenu
   :: (Eq n, Ord n, Show n)
@@ -137,7 +191,7 @@ renderDropDownMenu focused m = case m^?menuList._Just of
                      then withAttr menuSelectedAttr
                      else id
               height = Vector.length $ listElements l
-              width = maximum $ (\(t, _, _) -> textWidth t) <$> listElements l
+              width = maximum $ textWidth . showMenuItem <$> listElements l
           in if focused && sel && o
              then borderWithLabel (str t) $
                   padLeftRight 1 $ vLimit height $ hLimit width $
@@ -156,9 +210,20 @@ handleSubmenuEvent e m = maybe (pure m) handleEvent $ m ^? menuList._Just where
     pure $ m & menuList._Just .~ menus'
 
 drawMenuItem :: Bool -> MenuItem s n -> Widget n
-drawMenuItem sel (t, n, _) =
+drawMenuItem sel x@(t, n, e, _) =
   let cursor = if sel then showCursor n (Location (0, 0)) else id
-  in cursor $ str t
+  in cursor $ str $ showMenuItem x
+
+showMenuItem :: MenuItem s n -> String
+showMenuItem (t, _, Just e, _)  = t <> " (" <> showEvent e <> ")"
+showMenuItem (t, _, Nothing, _) = t
+
+showEvent :: Event -> String
+showEvent (EvKey (KChar c) mods) = concatMap showModifier mods <> [c] where
+  showModifier MCtrl = "Ctrl-"
+  showModifier MMeta = "Meta-"
+  showModifier MAlt  = "Alt-"
+  showModifier _     = ""
 
 isDropDownMenuOpen :: DropDownMenu s n -> Bool
 isDropDownMenuOpen = (^. menuOpen)
