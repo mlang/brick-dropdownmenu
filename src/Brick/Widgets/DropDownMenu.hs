@@ -81,7 +81,6 @@ import Lens.Micro.TH                                  ( makeLenses )
 
 type MenuItem s n = (String, n, Maybe Event, s -> EventM n (Next s))
 type Menu s n = [(String, n, Maybe Event, [MenuItem s n])]
-
 data Action s n = MoveTo !Int | Invoke (s -> EventM n (Next s))
 
 -- | Drop-down menus present a menu bar with drop-down submenus.
@@ -112,8 +111,8 @@ instance Named (DropDownMenu s n) n where getName = _menuName
 dropDownMenu
   :: n
   -- ^ The resource name for this drop-down menu
-  -> Menu s n
-  -- ^ Description of the menu structure and associated actions
+  -> [(String, n, Maybe Event, [(String, n, Maybe Event, s -> EventM n (Next s))])]
+  -- ^ Menu description
   -> DropDownMenu s n
 dropDownMenu name desc =
   DropDownMenu name False keyMap $ PointedList.fromList $
